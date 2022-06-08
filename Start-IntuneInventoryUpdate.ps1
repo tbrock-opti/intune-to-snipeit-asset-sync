@@ -366,6 +366,8 @@ function New-SnipeItAsset($snipeitToken, $asset) {
     if ($response.Status -ne 'success') {
         Write-Error 'Unable to add Model'
         $response.messages
+    } else {
+        return $response.payload
     }
     
 }
@@ -377,7 +379,6 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
     foreach ($device in $intuneDevices) {
         
         # clear re-used variables
-        $snipeItUser = $null
         $snipeItDevice = $null
         $manufacturer = $null
         $snipeitModel = $null
@@ -390,6 +391,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         ## Validate User #######################################################
         
         # match the intune user to a snipeit user for asset assgnment
+        $snipeItUser = $null
         $snipeItUser = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'users' -searchQuery $device.EmailAddress
         
         if (-not $snipeItUser) {
@@ -403,6 +405,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         ###############################
         ## Validate Device in Snipeit ###################################
         ## check if device has a serial number listed
+        $snipeItDevice = $null
         if ($device.serialNumber) {
             # if serial number present, query snipeit with serial
             $snipeItDevice = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'hardware' -searchQuery $device.serialnumber
@@ -424,13 +427,13 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
 
             ##########################################
             ## BEGIN Validate or create Manufacturer ###########################
+            # query snipeit for manufacturer
+            $manufacturer = $null
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiEndpoint  = 'manufacturers'
                 searchQuery  = $device.manufacturer
             }
-
-            # query snipeit for manufacturer
             $manufacturer = Get-SnipeItData @gsidParams
 
             # fix to match manufacturer by name if multiple matches exist
@@ -444,8 +447,12 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             if (-not $manufacturer) {
                 Write-Verbose "Manufacturer: $($device.manufacturer) not found, creating..."
                 # manufacturer doesn't exist, create it
-                New-SnipeItManufacturer -snipeitToken $snipeitToken -manufacturer $device.manufacturer
-                $manufacturer = Get-SnipeItData @gsidParams
+                $nsimParams = @{
+                    snipeitToken = $snipeitToken
+                    manufacturer  = $device.manufacturer
+                }
+                $manufacturer = New-SnipeItManufacturer @nsimParams
+                
 
                 # fix to match manufacturer by name if multiple matches exist
                 if ($manufacturer.count -gt 1) {
@@ -462,7 +469,8 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             ## BEGIN Valide or create model ####################################
             # manufacturer exists, verify model
             Write-Verbose "Manufacturer: $($device.manufacturer) exists, checking model..."
-                
+
+            $snipeitModel = $null
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiENDpoint  = 'models'
@@ -482,8 +490,8 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                     manufacturer_id = $manufacturer.id
                     fieldset_id     = '1' 
                 }
-                New-SnipeItModel -snipeitToken $snipeitToken -intuneModel $model
-                $snipeitModel = Get-SnipeItData @gsidParams
+                $snipeitModel = New-SnipeItModel -snipeitToken $snipeitToken -intuneModel $model
+                
             }
             ## END Valide or create model ######################################
             ####################################################################
@@ -493,6 +501,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             Write-Verbose "Model exists, checking location..."
             
             # get user location from Azure Graph
+            $userLocation = $null
             $gaulParams = @{
                 graphToken = $graphToken
                 azureUpn   = $device.userPrincipalName
@@ -500,6 +509,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             $userLocation = (Get-AzureUserLocation @gaulParams).officeLocation
 
             # check snipeit to see if location exists
+            $snipeitLocation = $null
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiEndpoint  = 'locations'
@@ -512,8 +522,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 Write-Verbose "Location: $userLocation not found, creating..."
                 
                 # model doesn't exist, create it
-                New-SnipeItLocation -snipeitToken $snipeitToken -location $userLocation
-                $snipeitLocation = Get-SnipeItData @gsidParams
+                $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $userLocation
             }
             ## END Validate or create location #################################
             ####################################################################
@@ -521,22 +530,13 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             ###########################
             ## BEGIN Create new asset ##########################################
             # model exists create asset
-            New-SnipeItAsset -snipeitToken $snipeitToken -asset @{
+            $snipeItDevice = New-SnipeItAsset -snipeitToken $snipeitToken -asset @{
                 model_id        = $snipeitModel.id
                 name            = $device.deviceName
                 serial          = $device.serialNumber
                 last_audit_date = $device.lastSyncDateTime
                 location_id     = $snipeitLocation.id
             }
-            
-            # get id for new asset
-            $gsidParams = @{
-                snipeitToken = $snipeitToken
-                apiEndpoint  = 'hardware'
-                searchQuery  = $device.deviceName
-            }
-            $snipeItDevice = Get-SnipeItData @gsidParams
-            
             Write-Verbose "New Asset:"
             $snipeItDevice
             
@@ -575,7 +575,13 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         if ($intuneLocation -ne $snipeItDevice.location.name) {
             # if location doesn't match
             # verify location exists
-                
+            $gsidParams = @{
+                snipeitToken = $snipeitToken
+                apiEndpoint  = 'locations'
+                searchQuery  = $intunelocation
+            }
+            $snipeitLocation = Get-SnipeItData @gsidParams
+            
             # update asset location
         }
         ## END If Device does exist ########################################
