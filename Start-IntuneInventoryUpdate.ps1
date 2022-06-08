@@ -312,7 +312,7 @@ function New-SnipeItAssetCheckout($snipeItToken, $assetId, $userId) {
     }
 }
 
-function New-SnipeItAssetCheckin($snipeItToken, $assetId, $userId) {
+function New-SnipeItAssetCheckin($snipeItToken, $assetId) {
     # parameters to make api call
     $irmParams = @{
         Headers = @{
@@ -551,7 +551,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         if ($device.emailAddress -ne $snipeitUser.username) {
             # if user doesn't match
             # need to re-assign asset in snipeit
-            New-SnipeItAssetCheckin -snipeItToken $snipeitToken -assetId            
+            New-SnipeItAssetCheckin -snipeItToken $snipeitToken          
 
             # unsassign asset and leave note
 
