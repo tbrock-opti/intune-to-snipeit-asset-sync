@@ -527,10 +527,15 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 serial          = $device.serialNumber
                 last_audit_date = $device.lastSyncDateTime
                 location_id     = $snipeitLocation.id
-}
+            }
             
             # get id for new asset
-            $snipeItDevice = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'hardware' -searchQuery $device.deviceName
+            $gsidParams = @{
+                snipeitToken = $snipeitToken
+                apiEndpoint  = 'hardware'
+                searchQuery  = $device.deviceName
+            }
+            $snipeItDevice = Get-SnipeItData @gsidParams
             
             Write-Verbose "New Asset:"
             $snipeItDevice
@@ -551,11 +556,19 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         if ($device.emailAddress -ne $snipeitUser.username) {
             # if user doesn't match
             # need to re-assign asset in snipeit
-            New-SnipeItAssetCheckin -snipeItToken $snipeitToken          
-
             # unsassign asset and leave note
-
+            New-SnipeItAssetCheckin -snipeItToken $snipeitToken -assetId $snipeItDevice.id       
+            
+            # use UPN to get correct user from snipeit
             # assign asset and leave note
+            $gsidParams = @{
+                snipeitToken = $snipeitToken
+                apiEndpoint  = 'users'
+                searchQuery  = $device.emailAddress
+            }
+            $snipeitUser = Get-SnipeItData @gsidParams
+
+            New-SnipeItAssetCheckout -snipeItToken $snipeitToken -assetId $snipeItDevice.id -userId $snipeItUser.id
         }
 
         # compare intune user location to snipeit asset location
@@ -568,14 +581,14 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         ## END If Device does exist ########################################
         ####################################################################
 
-        #  checkout asset if it isn't assigned to a user
+        <# #  checkout asset if it isn't assigned to a user
         if (-not $snipeItDevice.assigned_to) {
             New-SnipeItAssetCheckout -snipeItToken $snipeitToken -assetId $snipeItDevice.id -userId $snipeItUser.id
             
         }
         else {
             Write-Verbose 'Device already assigned...'
-        }
+        } #>
     }
 }
 
