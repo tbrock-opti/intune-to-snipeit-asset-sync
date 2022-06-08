@@ -607,7 +607,7 @@ To Do:
 <#
 Questions:
 1) What should I enter for an asset location?
-    pull from user logon location's or?
+    pull from user logon location's in intune - CONFIRMED
 
 2) Do we want to override asset assignments in snipeit with what's in Intune?
 #>
