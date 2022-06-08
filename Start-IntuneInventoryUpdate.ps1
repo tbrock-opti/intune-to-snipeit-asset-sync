@@ -1,6 +1,6 @@
 
 function Get-GraphToken ($appClientId, $appClientSecret) {
-    Write-Verbose 'Requesting GraphToken...'
+    Write-Verbose '***Requesting GraphToken...' 
 
     # o365 tenant
     $tenantId = 'episerver99.onmicrosoft.com'
@@ -22,7 +22,7 @@ function Get-GraphToken ($appClientId, $appClientSecret) {
 
     # if the token request is successful return the token
     if ($OAuthResponse) {
-        Write-Verbose 'Token request successful'
+        Write-Verbose '***Token request successful' 
         return $OAuthResponse.access_token
 
     }
@@ -34,7 +34,7 @@ function Get-GraphToken ($appClientId, $appClientSecret) {
 }
 
 function Get-ManagedDevices ($graphToken) {
-    Write-Verbose 'Getting Intune Managed Devices...'
+    Write-Verbose '***Getting Intune Managed Devices...' 
 
     # API parameters to request sign in logs
     $irmParams = @{
@@ -120,23 +120,28 @@ function Invoke-SnipeItApiThrottleManagement {
         }
     }
 
-    Write-Verbose "API Monitor: $($global:apicalls.count)"
+    Write-Verbose "***API Monitor: $($global:apicalls.count)" -Verbose
 
     # if the number of api calls in the past minute exceeds 120
-    if ($global:apiCalls.count -ge 120) {
+    if ($global:apiCalls.count -ge 115) {
         # need to throttle
         # determine number of seconds until oldest call expires
         # + 1 seconds to ensure we always stay under the throttle limit
         $secondsToSleep = 61 - ((Get-Date) - $global:apiCalls[0]).seconds
-        Write-Verbose "Sleeping $secondsToSleep seconds..."
-        
-        # sleep determined number of seconds
-        Start-Sleep -Seconds $secondsToSleep
+        Write-Verbose "***Sleeping $secondsToSleep seconds..." -Verbose
+        $ctr = 0
+        do {
+            $ctr++
+            Write-Verbose $ctr -Verbose
+            Start-Sleep -Seconds 1
+        } until ($ctr -eq $secondsToSleep)
 
         # resume processing normally
+        Write-Verbose "***resuming..." -Verbose
     }
 
 }
+
 function Get-SnipeItData($snipeitToken, $apiEndpoint, $searchQuery) {
     # parameters to make api call
     $irmParams = @{
@@ -231,18 +236,20 @@ function New-SnipeItLocation($snipeitToken, $location) {
         Method  = 'POST'
         Uri     = 'https://snipeit.internal.optimizely.com/api/v1/locations'
         Body    = @{
-            name = $location
+            name = $location.officeLocation
         } | ConvertTo-Json
     }
        
     # make api call to add location   
+    Write-Verbose "Location: $location.officeLocation" 
     $response = Invoke-RestMethod @irmParams
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        Write-Error $error[0].Exception
+        $response.messages
     }
     else {
+        Write-Verbose "***New location created successfully" 
         return $response.payload
     }
     
@@ -366,16 +373,91 @@ function New-SnipeItAsset($snipeitToken, $asset) {
     if ($response.Status -ne 'success') {
         Write-Error 'Unable to add Model'
         $response.messages
-    } else {
+    }
+    else {
         return $response.payload
     }
     
 }
 
-function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
+function Set-SnipeItAsset {
+    param(
+        $snipeitToken,
+        $asset_id, 
+        $status_id, 
+        $model_id, 
+        $notes, 
+        $last_checkout, 
+        $assigned_to, 
+        $company_id, 
+        $serial, 
+        $order_number,
+        $warranty_months,
+        $purchase_cost,
+        $purchase_date,
+        $requestable,
+        $archived,
+        $rtd_location_id,
+        $name,
+        $location_id
+    )
+
+    # check each parameter for a value and if present, add it to body
+    [pscustomobject]$body = @{}
+    if ($status_id) { $body.Add('status_id', $status_id) } 
+    if ($model_id) { $body.Add('model_id', $model_id) } 
+    if ($notes) { $body.Add('notes', $notes) } 
+    if ($last_checkout) { $body.Add('last_checkout', $last_checkout) } 
+    if ($assigned_to) { $body.Add('assigned_to', $assigned_to) } 
+    if ($company_id) { $body.Add('company_id', $company_id) } 
+    if ($serial) { $body.Add('serial', $serial) } 
+    if ($order_number) { $body.Add('order_number', $order_number) }
+    if ($warranty_months) { $body.Add('warranty_months', $warranty_months) }
+    if ($purchase_cost) { $body.Add('purchase_cost', $purchase_cost) }
+    if ($purchase_date) { $body.Add('purchase_date', $purchase_date) }
+    if ($requestable) { $body.Add('requestable', $requestable) }
+    if ($archived) { $body.Add('archived', $archived) }
+    if ($rtd_location_id) { $body.Add('rtd_location_id', $rtd_location_id) }
+    if ($name) { $body.Add('name', $name) }
+    if ($location_id) { $body.Add('location_id', $location_id) }
+
+    
+    # parameters to make api call
+    $irmParams = @{
+        Headers = @{
+            Accept         = 'application/json'
+            Authorization  = "Bearer $snipeitToken"
+            'Content-Type' = 'application/json'
+        }
+        Method  = 'PUT'
+        Uri     = "https://snipeit.internal.optimizely.com/api/v1/hardware/$asset_id"
+        Body    = $body | ConvertTo-Json
+    }
+    
+    Write-Verbose "Asset ID: $asset_id"     
+    Write-Verbose "Location ID: $location_id"     
+    Write-Verbose $($irmParams | ConvertTo-Json ) 
+    Write-Verbose "Body: $($body | ConvertTo-Json )" 
+
+    # make api call to update asset   
+    $response = Invoke-RestMethod @irmParams
+    Invoke-SnipeItApiThrottleManagement
+
+    if ($response.Status -ne 'success') {
+        Write-Error $response.messages
+    }
+    else {
+        Write-Verbose 'Asset update successful.' 
+        return $response.payload
+    }
+    
+}
+
+function Update-SnipeItAssets ($snipeitToken, $intuneDevices) { 
 
     # loop through all intune devices and process them in 
     # to more usable data
+    Write-Verbose "Processing $($intuneDevices.count) devices..." -Verbose
     foreach ($device in $intuneDevices) {
         
         # clear re-used variables
@@ -385,7 +467,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         $snipeitLocation = $null
 
         
-        Write-Verbose "Processing $($device.deviceName)"
+        Write-Verbose "***Processing $($device.deviceName)" 
         
         ##################
         ## Validate User #######################################################
@@ -398,7 +480,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             # unable to match user, need to run an ldap sync
 
         }
-        Write-Verbose "User Identified: $($snipeItUser.name)"
+        Write-Verbose "***User Identified: $($snipeItUser.name)" 
         ## END Validate User ###################################################
         ########################################################################
 
@@ -421,7 +503,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         ###############################        
         ## BEGIN IF Device does exist ##########################################
         if (-not $snipeItDevice) {
-            Write-Verbose "Device does NOT exist, creating..."
+            Write-Verbose "***Device does NOT exist, creating..." 
             # device does not exist, create it
             # verify manufacturer or create
 
@@ -445,11 +527,11 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             
             # if not found
             if (-not $manufacturer) {
-                Write-Verbose "Manufacturer: $($device.manufacturer) not found, creating..."
+                Write-Verbose "***Manufacturer: $($device.manufacturer) not found, creating..." 
                 # manufacturer doesn't exist, create it
                 $nsimParams = @{
                     snipeitToken = $snipeitToken
-                    manufacturer  = $device.manufacturer
+                    manufacturer = $device.manufacturer
                 }
                 $manufacturer = New-SnipeItManufacturer @nsimParams
                 
@@ -468,7 +550,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             #################################
             ## BEGIN Valide or create model ####################################
             # manufacturer exists, verify model
-            Write-Verbose "Manufacturer: $($device.manufacturer) exists, checking model..."
+            Write-Verbose "***Manufacturer: $($device.manufacturer) exists, checking model..." 
 
             $snipeitModel = $null
             $gsidParams = @{
@@ -480,7 +562,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
 
             # if model isn't found create it
             if (-not $snipeitModel) {
-                Write-Verbose "Model: $($device.model) not found, creating..."
+                Write-Verbose "***Model: $($device.model) not found, creating..." 
                 
                 # model doesn't exist, create it
                 $model = @{
@@ -498,7 +580,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             
             ######################################
             ## BEGIN Validate or create location ###############################
-            Write-Verbose "Model exists, checking location..."
+            Write-Verbose "***Model exists, checking location..." 
             
             # get user location from Azure Graph
             $userLocation = $null
@@ -519,7 +601,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
 
             # if model isn't found create it
             if (-not $snipeitLocation) {
-                Write-Verbose "Location: $userLocation not found, creating..."
+                Write-Verbose "***Location: $userLocation not found, creating..." 
                 
                 # model doesn't exist, create it
                 $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $userLocation
@@ -537,27 +619,32 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 last_audit_date = $device.lastSyncDateTime
                 location_id     = $snipeitLocation.id
             }
-            Write-Verbose "New Asset:"
-            $snipeItDevice
+            Write-Verbose "***New Asset:" 
+            $snipeItDevice | Format-Table id,name,serial,location,lastCheckout
             
             ## END Create new asset ############################################
             ####################################################################
         }
         
-        Write-Verbose "Devices exists, verifying user..."
+        Write-Verbose "***Devices exists, verifying user..." 
         
         # user snipeit shows currently assigned
         $snipeitUser = $snipeItDevice.assigned_to
 
         # user location from azure graph
         $intuneLocation = Get-AzureUserLocation -graphToken $graphToken -azureUpn $device.userPrincipalName
+        Write-Verbose "***Intune Location: $intuneLocation" 
 
         # compare intune email address to snipeit user
         if ($device.emailAddress -ne $snipeitUser.username) {
+            Write-Verbose "***Intune Assignee: $($device.emailAddress) != $($snipeItUser.username)" 
+            Write-Verbose "***Checking in asset..." 
             # if user doesn't match
             # need to re-assign asset in snipeit
-            # unsassign asset and leave note
-            New-SnipeItAssetCheckin -snipeItToken $snipeitToken -assetId $snipeItDevice.id       
+            # unsassign asset if it's assigned
+            if ($snipeItDevice.assigned_to) {
+                New-SnipeItAssetCheckin -snipeItToken $snipeitToken -assetId $snipeItDevice.id       
+            }
             
             # use UPN to get correct user from snipeit
             # assign asset and leave note
@@ -567,41 +654,53 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 searchQuery  = $device.emailAddress
             }
             $snipeitUser = Get-SnipeItData @gsidParams
-
+            Write-Verbose "*** Checking out asset..." 
             New-SnipeItAssetCheckout -snipeItToken $snipeitToken -assetId $snipeItDevice.id -userId $snipeItUser.id
         }
 
         # compare intune user location to snipeit asset location
-        if ($intuneLocation -ne $snipeItDevice.location.name) {
-            
+        $snipeitLocation = $null
+        $snipeitLocationName = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'locations' | Where-Object {
+            $_.id -eq $snipeItDevice.location_id
+        }
+        #Write-Verbose "SnipeIt Location: $($snipeitLocation | ConvertTo-Json)" -Verbose
+        #Write-Verbose "Intune Location: $($intuneLocation.officeLocation)" -Verbose
+        
+        if ($intuneLocation.officeLocation -ne $snipeitLocationName) {
+            Write-Verbose "Intune Location: $($intuneLocation.officeLocation) does not match $snipeitLocationName" -Verbose
             # if location doesn't match verify location exists
-            $snipeitLocation = $null
+            
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiEndpoint  = 'locations'
-                searchQuery  = $intunelocation
+                searchQuery  = $intunelocation.officeLocation
             }
-            if (-not $(Get-SnipeItData @gsidParams)) {
+            $snipeitLocation = Get-SnipeItData @gsidParams
+
+            if (-not $snipeitLocation) {
                 # if location doesn't exist, create it
                 $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $intuneLocation
             }
-            
 
             # update asset location
+            
+            Write-Verbose "*** Calling Asset update with location: $($snipeitLocation.id)" -Verbose
+            Set-SnipeItAsset -snipeitToken $snipeitToken -asset_id $snipeItDevice.id -location_id $snipeitLocation.id
         }
-        ## END If Device does exist ########################################
-        ####################################################################
+    }
+    ## END If Device does exist ########################################
+    ####################################################################
 
-        <# #  checkout asset if it isn't assigned to a user
+    <# #  checkout asset if it isn't assigned to a user
         if (-not $snipeItDevice.assigned_to) {
             New-SnipeItAssetCheckout -snipeItToken $snipeitToken -assetId $snipeItDevice.id -userId $snipeItUser.id
             
         }
         else {
-            Write-Verbose 'Device already assigned...'
+            Write-Verbose '***Device already assigned...' 
         } #>
-    }
 }
+
 
 
 <#
@@ -636,7 +735,7 @@ Questions:
 2) Do we want to override asset assignments in snipeit with what's in Intune?
 #>
 
-$VerbosePreference = 'Continue'
+#$VerbosePreference = 'Continue'
 [System.DateTime[]]$global:apiCalls = @()
 
 #################################################
@@ -671,4 +770,5 @@ $intuneDevices = Get-ManagedDevices($graphToken)
 
 # retrieve all assets
 #$snipeItAssets = Get-SnipeItData -snipeitToken $snipeItToken -apiEndpoint 'hardware'
+
 
