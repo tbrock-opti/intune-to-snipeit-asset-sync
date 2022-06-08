@@ -114,7 +114,7 @@ function Invoke-SnipeItApiThrottleManagement {
     # filter out calls from only the past minute
     $global:apiCalls = foreach ($call in $global:apiCalls) {
         # if NOW less call dateTime is under 1 minute
-        if (( (Get-Date) - $_ ).Minutes -lt 1) {
+        if (( (Get-Date) - $call ).Minutes -lt 1) {
             # include this call in the updated list
             $call
         }
@@ -573,15 +573,20 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
 
         # compare intune user location to snipeit asset location
         if ($intuneLocation -ne $snipeItDevice.location.name) {
-            # if location doesn't match
-            # verify location exists
+            
+            # if location doesn't match verify location exists
+            $snipeitLocation = $null
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiEndpoint  = 'locations'
                 searchQuery  = $intunelocation
             }
-            $snipeitLocation = Get-SnipeItData @gsidParams
+            if (-not $(Get-SnipeItData @gsidParams)) {
+                # if location doesn't exist, create it
+                $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $intuneLocation
+            }
             
+
             # update asset location
         }
         ## END If Device does exist ########################################
