@@ -660,14 +660,14 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
 
         # compare intune user location to snipeit asset location
         $snipeitLocation = $null
-        $snipeitLocationName = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'locations' | Where-Object {
-            $_.id -eq $snipeItDevice.location_id
+        $snipeitLocation = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'locations' | Where-Object {
+            $_.id -eq $snipeItDevice.location.id
         }
         #Write-Verbose "SnipeIt Location: $($snipeitLocation | ConvertTo-Json)" -Verbose
         #Write-Verbose "Intune Location: $($intuneLocation.officeLocation)" -Verbose
         
-        if ($intuneLocation.officeLocation -ne $snipeitLocationName) {
-            Write-Verbose "Intune Location: $($intuneLocation.officeLocation) does not match $snipeitLocationName" -Verbose
+        if ($intuneLocation.officeLocation -ne $snipeitLocation.name) {
+            Write-Verbose "Intune Location: $($intuneLocation.officeLocation) does not match $($snipeitLocation.name)" -Verbose
             # if location doesn't match verify location exists
             
             $gsidParams = @{
