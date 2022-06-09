@@ -478,7 +478,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         $snipeitLocation = $null
 
         
-        Write-Verbose "***Processing $($device.deviceName)" 
+        Write-Verbose "***Processing $($device.deviceName)" -Verbose
         
         ##################
         ## Validate User #######################################################
@@ -670,17 +670,17 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         }
 
         # compare intune user location to snipeit asset location
-        $snipeitLocation = $null
-        $snipeitLocation = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'locations' | Where-Object {
+        $snipeitDeviceLocation = $null
+        $snipeitDeviceLocation = Get-SnipeItData -snipeitToken $snipeitToken -apiEndpoint 'locations' | Where-Object {
             $_.id -eq $snipeItDevice.location.id
         }
         #Write-Verbose "SnipeIt Location: $($snipeitLocation | ConvertTo-Json)" -Verbose
         #Write-Verbose "Intune Location: $($intuneLocation.officeLocation)" -Verbose
         
-        if ($intuneLocation.officeLocation -ne $snipeitLocation.name) {
-            Write-Verbose "Intune Location: $($intuneLocation.officeLocation) does not match $($snipeitLocation.name)" -Verbose
-            # if location doesn't match verify location exists
+        if ($intuneLocation.officeLocation -ne $snipeitDeviceLocation.name) {
+            Write-Verbose "Intune Location: $($intuneLocation.officeLocation) does not match $($snipeitDeviceLocation.name)" -Verbose
             
+            # if location doesn't match verify location exists
             $gsidParams = @{
                 snipeitToken = $snipeitToken
                 apiEndpoint  = 'locations'
@@ -688,9 +688,10 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
             }
             $snipeitLocation = Get-SnipeItData @gsidParams
 
-            if (-not $snipeitLocation) {
+            # verify resulting name matches exactly (avoids partial matches)
+            if ($snipeitLocation.name -ne $intuneLocation.officeLocation) {
                 # if location doesn't exist, create it
-                $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $intuneLocation
+                $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $intuneLocation.officeLocation
             }
 
             # update asset location
