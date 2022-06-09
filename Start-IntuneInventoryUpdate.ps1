@@ -701,21 +701,6 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         } #>
 }
 
-
-
-<#
-Properties to provide SnipeIt
- company            - Company                                      
- serial             - serial number
- model              - model (assumes Manufacturer)
- status_label       - Status (set to "In Production")
- name               - Device Name
- intuneEnroll       - Purchase Date (enrolled Date/time)
- assigned_to        - Assigned User                                
- mode/Manufacturer  - Manufacturer (only if model isn't present)
- lastSyncDateTime   - 
-
-#>
 <#
 To Do:
 - get jamf import working
@@ -723,23 +708,13 @@ To Do:
 - handle override or not overriding a user assignment that doesn't match
 - setup a dedicated snipeit user so it doesn't reflect my user account checking
     out all assets
-
-    
-#>
-
-<#
-Questions:
-1) What should I enter for an asset location?
-    pull from user logon location's in intune - CONFIRMED
-
-2) Do we want to override asset assignments in snipeit with what's in Intune?
 #>
 
 #$VerbosePreference = 'Continue'
 [System.DateTime[]]$global:apiCalls = @()
 
-#################################################
-# prepare tokens for Graph and Snipeit
+#########################################
+## prepare tokens for Graph and Snipeit ########################################
 #
 
 # Graph client id from stored secure string
@@ -762,13 +737,11 @@ $snipeItToken = [PSCredential]::New(
     'user',
     $(Get-Content -Path .\apiKey | ConvertTo-SecureString)).GetNetworkCredential().Password
 
-###################################################
-
+## End Prepare tokens ##########################################################
+#######################
 
 # retrieve intune devices with graph token
 $intuneDevices = Get-ManagedDevices($graphToken)
 
-# retrieve all assets
-#$snipeItAssets = Get-SnipeItData -snipeitToken $snipeItToken -apiEndpoint 'hardware'
-
-
+# run the sync
+Update-SnipeItAssets -snipeitToken $snipeItToken -intuneDevices $intuneDevices
