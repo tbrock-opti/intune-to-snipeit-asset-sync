@@ -120,7 +120,7 @@ function Invoke-SnipeItApiThrottleManagement {
         }
     }
 
-    Write-Verbose "***API Monitor: $($global:apicalls.count)" -Verbose
+    Write-Verbose "***API Monitor: $($global:apicalls.count)"
 
     # if the number of api calls in the past minute exceeds 120
     if ($global:apiCalls.count -ge 115) {
@@ -128,7 +128,7 @@ function Invoke-SnipeItApiThrottleManagement {
         # determine number of seconds until oldest call expires
         # + 1 seconds to ensure we always stay under the throttle limit
         $secondsToSleep = 61 - ((Get-Date) - $global:apiCalls[0]).seconds
-        Write-Verbose "***Sleeping $secondsToSleep seconds..." -Verbose
+        Write-Verbose "*** API Monitor: $($global:apicalls.count) calls. Sleeping $secondsToSleep seconds..." -Verbose
         $ctr = 0
         do {
             $ctr++
@@ -137,7 +137,7 @@ function Invoke-SnipeItApiThrottleManagement {
         } until ($ctr -eq $secondsToSleep)
 
         # resume processing normally
-        Write-Verbose "***resuming..." -Verbose
+        Write-Verbose "*** API Monitor: resuming..." -Verbose
     }
 
 }
@@ -230,7 +230,7 @@ function New-SnipeItManufacturer($snipeitToken, $manufacturer) {
     
 }
 
-function New-SnipeItLocation($snipeitToken, $location) {
+function New-SnipeItLocation($snipeitToken, $locationName) {
     # parameters to make api call
     $irmParams = @{
         Headers = @{
@@ -241,18 +241,19 @@ function New-SnipeItLocation($snipeitToken, $location) {
         Method  = 'POST'
         Uri     = 'https://snipeit.internal.optimizely.com/api/v1/locations'
         Body    = @{
-            name = $location.officeLocation
+            name = $locationName
         } | ConvertTo-Json
     }
        
     # make api call to add location   
-    Write-Verbose "Location: $location.officeLocation" 
+    Write-Verbose "Creating New Location: $locationName" -Verbose
+    $irmParams
     $response = Invoke-RestMethod @irmParams
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        rite-Error $error[0].Exception
-        $response
+        Write-Error $error[0].Exception
+        $response.messages
     }
     else {
         Write-Verbose "***New location created successfully" 
@@ -313,13 +314,15 @@ function New-SnipeItAssetCheckout($snipeItToken, $assetId, $userId) {
         } | ConvertTo-Json
     }
        
-    # make api call to add manufacturer   
+    # make api call to checkout asset   
     $response = Invoke-RestMethod @irmParams
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        rite-Error $error[0].Exception
-        $response
+        $irmParams.Body | ConvertTo-Json
+        
+        Write-Error $error[0].Exception
+        $response.messages
     }
     else {
         return $response.payload
@@ -469,8 +472,9 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
     # loop through all intune devices and process them in 
     # to more usable data
     Write-Verbose "Processing $($intuneDevices.count) devices..." -Verbose
+    $ctr = 0
     foreach ($device in $intuneDevices) {
-        
+        $ctr++
         # clear re-used variables
         $snipeItDevice = $null
         $manufacturer = $null
@@ -478,7 +482,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
         $snipeitLocation = $null
 
         
-        Write-Verbose "***Processing $($device.deviceName)" -Verbose
+        Write-Verbose "***Processing $($device.deviceName) ($ctr/$($intuneDevices.count))" -Verbose
         
         ##################
         ## Validate User #######################################################
@@ -664,8 +668,12 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 apiEndpoint  = 'users'
                 searchQuery  = $device.emailAddress
             }
-            $snipeitUser = Get-SnipeItData @gsidParams
-            Write-Verbose "*** Checking out asset..." 
+            $snipeitUser = Get-SnipeItData @gsidParams | Where-Object {
+                # fix for snipeit somehow returning multiple users
+                $_.email -eq $device.emailaddress
+            }
+            Write-Verbose "*** Checking out asset..." -Verbose
+            Write-Verbose "*** Intune Email: $($device.emailaddress)"
             New-SnipeItAssetCheckout -snipeItToken $snipeitToken -assetId $snipeItDevice.id -userId $snipeItUser.id
         }
 
@@ -686,10 +694,12 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 apiEndpoint  = 'locations'
                 searchQuery  = $intunelocation.officeLocation
             }
-            $snipeitLocation = Get-SnipeItData @gsidParams
+            $snipeitLocation = Get-SnipeItData @gsidParams | Where-Object {
+                $_.name -eq $intuneLocation.officeLocation
+            }
 
             # verify resulting name matches exactly (avoids partial matches)
-            if ($snipeitLocation.name -ne $intuneLocation.officeLocation) {
+            if (-not $snipeitLocation) {
                 # if location doesn't exist, create it
                 $snipeitLocation = New-SnipeItLocation -snipeitToken $snipeitToken -location $intuneLocation.officeLocation
             }
