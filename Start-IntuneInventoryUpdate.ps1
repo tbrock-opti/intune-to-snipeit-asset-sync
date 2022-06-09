@@ -181,6 +181,10 @@ function Get-SnipeItData($snipeitToken, $apiEndpoint, $searchQuery) {
         $response = Invoke-RestMethod @irmParams -Uri $Uri
         Invoke-SnipeItApiThrottleManagement
 
+        if ($response.messages -eq 'Server Error') {
+            $response
+        }
+
         $rows = $response.rows | Sort-Object -Property id
         
         # add each row to the return object
@@ -218,6 +222,7 @@ function New-SnipeItManufacturer($snipeitToken, $manufacturer) {
 
     if ($response.Status -ne 'success') {
         Write-Error $error[0].Exception
+        $response
     }
     else {
         return $response.payload
@@ -246,7 +251,8 @@ function New-SnipeItLocation($snipeitToken, $location) {
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        $response.messages
+        rite-Error $error[0].Exception
+        $response
     }
     else {
         Write-Verbose "***New location created successfully" 
@@ -281,7 +287,7 @@ function New-SnipeItModel($snipeitToken, $intuneModel) {
 
     if ($response.Status -ne 'success') {
         Write-Error $error[0].Exception
-        $response.messages
+        $response
     }
     else {
         return $response.payload
@@ -312,7 +318,8 @@ function New-SnipeItAssetCheckout($snipeItToken, $assetId, $userId) {
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        $response.messages
+        rite-Error $error[0].Exception
+        $response
     }
     else {
         return $response.payload
@@ -340,8 +347,11 @@ function New-SnipeItAssetCheckin($snipeItToken, $assetId) {
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        Write-Error 'Unable to checkout asset'
-        $response.messages
+        Write-Error $error[0].Exception
+        $response
+    }
+    else {
+        return $response.payload
     }
 }
 
@@ -371,8 +381,8 @@ function New-SnipeItAsset($snipeitToken, $asset) {
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        Write-Error 'Unable to add Model'
-        $response.messages
+        Write-Error $error[0].Exception
+        $response
     }
     else {
         return $response.payload
@@ -444,7 +454,8 @@ function Set-SnipeItAsset {
     Invoke-SnipeItApiThrottleManagement
 
     if ($response.Status -ne 'success') {
-        Write-Error $response.messages
+        Write-Error $error[0].Exception
+        $response
     }
     else {
         Write-Verbose 'Asset update successful.' 
@@ -620,7 +631,7 @@ function Update-SnipeItAssets ($snipeitToken, $intuneDevices) {
                 location_id     = $snipeitLocation.id
             }
             Write-Verbose "***New Asset:" 
-            $snipeItDevice | Format-Table id,name,serial,location,lastCheckout
+            $snipeItDevice | Format-Table id, name, serial, location, lastCheckout
             
             ## END Create new asset ############################################
             ####################################################################
